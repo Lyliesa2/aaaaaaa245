@@ -1,0 +1,193 @@
+const Discord = require('discord.js');
+const { Fore, init, Style } = require('colorama');
+
+function print_add(message) {
+  console.log(`${Fore.GREEN}[+]${Style.RESET_ALL} ${message}`);
+}
+
+function print_delete(message) {
+  console.log(`${Fore.RED}[-]${Style.RESET_ALL} ${message}`);
+}
+
+function print_warning(message) {
+  console.log(`${Fore.RED}[WARNING]${Style.RESET_ALL} ${message}`);
+}
+
+function print_error(message) {
+  console.log(`${Fore.RED}[ERROR]${Style.RESET_ALL} ${message}`);
+}
+
+class Clone {
+  static async roles_delete(guild_to) {
+    guild_to.roles.cache.forEach(async (role) => {
+      try {
+        if (role.name !== '@everyone') {
+          await role.delete();
+          print_delete(`Silinen Rol: ${role.name}`);
+        }
+      } catch (error) {
+        print_error(`Rol Silinirken Hata olustu: ${role.name}`);
+      }
+    });
+  }
+
+  static async roles_create(guild_to, guild_from) {
+    const roles = guild_from.roles.cache.filter((role) => role.name !== '@everyone').array().reverse();
+    roles.forEach(async (role) => {
+      try {
+        await guild_to.roles.create({
+          data: {
+            name: role.name,
+            color: role.color,
+            hoist: role.hoist,
+            mentionable: role.mentionable,
+            permissions: role.permissions.bitfield,
+          },
+        });
+        print_add(`Oluşturulan Rol ${role.name}`);
+      } catch (error) {
+        print_error(`Rol Oluştururken Hata: ${role.name}`);
+      }
+    });
+  }
+
+  static async channels_delete(guild_to) {
+    guild_to.channels.cache.forEach(async (channel) => {
+      try {
+        await channel.delete();
+        print_delete(`Silinen Kanal: ${channel.name}`);
+      } catch (error) {
+        print_error(`Kanal Silinirken Hata: ${channel.name}`);
+      }
+    });
+  }
+
+  static async categories_create(guild_to, guild_from) {
+    guild_from.channels.cache.forEach(async (channel) => {
+      if (channel.type === 'category') {
+        try {
+          const overwrites_to = {};
+          channel.permissionOverwrites.forEach((overwrite, key) => {
+            const role = guild_to.roles.cache.find((r) => r.name === key);
+            if (role) {
+              overwrites_to[role.id] = {
+                allow: overwrite.allow.bitfield,
+                deny: overwrite.deny.bitfield,
+              };
+            }
+          });
+
+          const new_channel = await guild_to.channels.create(channel.name, {
+            type: 'category',
+            permissionOverwrites: overwrites_to,
+            position: channel.position,
+          });
+          print_add(`Oluşturulan Kategori: ${channel.name}`);
+        } catch (error) {
+          print_error(`Kategori Oluştururken Hata: ${channel.name}`);
+        }
+      }
+    });
+  }
+
+  static async channels_create(guild_to, guild_from) {
+    guild_from.channels.cache.forEach(async (channel) => {
+      if (channel.type === 'text' || channel.type === 'voice') {
+        try {
+          const overwrites_to = {};
+          channel.permissionOverwrites.forEach((overwrite, key) => {
+            const role = guild_to.roles.cache.find((r) => r.name === key);
+            if (role) {
+              overwrites_to[role.id] = {
+                allow: overwrite.allow.bitfield,
+                deny: overwrite.deny.bitfield,
+              };
+            }
+          });
+
+          let new_channel;
+          if (channel.type === 'text') {
+            new_channel = await guild_to.channels.create(channel.name, {
+              type: 'text',
+              permissionOverwrites: overwrites_to,
+              position: channel.position,
+              topic: channel.topic,
+              nsfw: channel.nsfw,
+            });
+          } else if (channel.type === 'voice') {
+            new_channel = await guild_to.channels.create(channel.name, {
+              type: 'voice',
+              permissionOverwrites: overwrites_to,
+              position: channel.position,
+              bitrate: channel.bitrate,
+              userLimit: channel.userLimit,
+            });
+          }
+
+          if (channel.parent) {
+            const category = guild_to.channels.cache.find((c) => c.type === 'category' && c.name === channel.parent.name);
+            if (category) {
+              await new_channel.setParent(category);
+            }
+          }
+
+          print_add(`Oluşturulan ${channel.type === 'text' ? 'Metin' : 'Ses'} Kanalı: ${channel.name}`);
+        } catch (error) {
+          print_error(`${channel.type === 'text' ? 'Metin' : 'Ses'} Kanalı Oluştururken Hata: ${channel.name}`);
+        }
+      }
+    });
+  }
+
+  static async emojis_delete(guild_to) {
+    guild_to.emojis.cache.forEach(async (emoji) => {
+      try {
+        await emoji.delete();
+        print_delete(`Silinen Emoji: ${emoji.name}`);
+      } catch (error) {
+        print_error(`Emoji Silinirken Hata Oluştu AMK ${emoji.name}`);
+      }
+    });
+  }
+
+  static async emojis_create(guild_to, guild_from) {
+    guild_from.emojis.cache.forEach(async (emoji) => {
+      try {
+        const emoji_image = await emoji.url.read();
+        await guild_to.emojis.create(emoji_image, emoji.name);
+        print_add(`Oluşturulan Emoji ${emoji.name}`);
+      } catch (error) {
+        print_error(`Emoji Oluştururken Hata AMK ${emoji.name}`);
+      }
+    });
+  }
+
+  static async guild_edit(guild_to, guild_from) {
+    try {
+      let icon_image = null;
+      try {
+        icon_image = await guild_from.iconURL({ format: 'png' }).read();
+      } catch (error) {
+        print_error(`Simge görüntüsü okunamıyor AMK ${guild_from.name}`);
+      }
+
+      await guild_to.edit({
+        name: guild_from.name,
+        icon: icon_image,
+      });
+      if (icon_image !== null) {
+        print_add(`Sunucu Simgesi Değiştirildi: ${guild_to.name}`);
+      }
+    } catch (error) {
+      print_error(`Sunucu Simgesini Değiştirirken Hata: ${guild_to.name}`);
+    }
+  }
+}
+
+module.exports = {
+  print_add,
+  print_delete,
+  print_warning,
+  print_error,
+  Clone,
+};
